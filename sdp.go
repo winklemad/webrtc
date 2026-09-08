@@ -721,6 +721,7 @@ func populateSDP(
 	mediaSections []mediaSection,
 	iceGatheringState ICEGatheringState,
 	matchBundleGroup *remoteBundleGroup,
+	bundlePolicy BundlePolicy,
 	sctpMaxMessageSize uint32,
 	ignoreRidPauseForRecv bool,
 ) (*sdp.SessionDescription, error) {
@@ -786,10 +787,14 @@ func populateSDP(
 
 		if shouldAddID {
 			switch {
-			case matchBundleGroup != nil && !matchBundleGroup.present:
-				// the remote description has no BUNDLE group. Only one
-				// transport is available, so every media section after the
-				// first one is rejected.
+			case matchBundleGroup != nil && !matchBundleGroup.present &&
+				bundlePolicy == BundlePolicyMaxBundle:
+				// The remote description has no BUNDLE group. Under max-bundle
+				// pion negotiates a single media track, so keep the first
+				// section and reject the rest. Other policies fall through to
+				// the normal path (which, with no group to match, rejects every
+				// section) to avoid changing spec behavior for balanced and
+				// max-compat, where pion cannot yet offer separate transports.
 				if i != 0 {
 					descr.MediaDescriptions[len(descr.MediaDescriptions)-1].MediaName.Port = sdp.RangedPort{Value: 0}
 				}

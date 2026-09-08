@@ -994,8 +994,10 @@ func TestPeerConnection_AnswerNonBundledOffer(t *testing.T) {
 		"a=rtcp-mux\r\n" +
 		"a=rtpmap:111 opus/48000/2\r\n"
 
-	t.Run("without a bundle group", func(t *testing.T) {
-		pc, err := NewPeerConnection(Configuration{})
+	t.Run("without a bundle group, under max-bundle", func(t *testing.T) {
+		// Accepting a non-bundled offer is opt-in behind max-bundle, whose
+		// spec behavior for a non-bundle-aware remote is a single media track.
+		pc, err := NewPeerConnection(Configuration{BundlePolicy: BundlePolicyMaxBundle})
 		assert.NoError(t, err)
 
 		assert.NoError(t, pc.SetRemoteDescription(SessionDescription{

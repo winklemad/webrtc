@@ -2959,6 +2959,7 @@ func (pc *PeerConnection) generateUnmatchedSDP(
 		mediaSections,
 		pc.ICEGatheringState(),
 		nil,
+		pc.configuration.BundlePolicy,
 		pc.api.settingEngine.getSCTPMaxMessageSize(),
 		false,
 	)
@@ -3160,6 +3161,7 @@ func (pc *PeerConnection) generateMatchedSDP(
 		mediaSections,
 		pc.ICEGatheringState(),
 		bundleGroup,
+		pc.configuration.BundlePolicy,
 		pc.api.settingEngine.getSCTPMaxMessageSize(),
 		ignoreRidPauseForRecv,
 	)

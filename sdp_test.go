@@ -759,6 +759,7 @@ func TestMediaDescriptionFingerprints(t *testing.T) {
 				media,
 				ICEGatheringStateNew,
 				nil,
+				BundlePolicyBalanced,
 				0,
 				false,
 			)
@@ -814,6 +815,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			se.ignoreRidPauseForRecv,
 		)
@@ -876,6 +878,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			se.ignoreRidPauseForRecv,
 		)
@@ -936,6 +939,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
@@ -977,6 +981,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			[]mediaSection{},
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
@@ -1036,6 +1041,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
@@ -1070,6 +1076,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			[]mediaSection{},
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
@@ -1101,6 +1108,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			[]mediaSection{},
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
@@ -1146,6 +1154,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
@@ -1186,6 +1195,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			&remoteBundleGroup{mids: "audio", present: true},
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
@@ -1228,6 +1238,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			&remoteBundleGroup{present: true},
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
@@ -1236,7 +1247,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 		_, ok := offerSdp.Attribute(sdp.AttrKeyGroup)
 		assert.False(t, ok)
 	})
-	t.Run("remote without bundle group", func(t *testing.T) {
+	t.Run("remote without bundle group, max-bundle keeps only the first section", func(t *testing.T) {
 		se := SettingEngine{}
 
 		me := &MediaEngine{}
@@ -1268,14 +1279,62 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			&remoteBundleGroup{},
+			BundlePolicyMaxBundle,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
 		assert.Nil(t, err)
 
-		// only one transport is available, so the first media section is
-		// kept and the others are rejected.
+		// under max-bundle only one media track is negotiated, so the first
+		// section is kept and the others are rejected.
 		assert.NotEqual(t, 0, offerSdp.MediaDescriptions[0].MediaName.Port.Value)
+		assert.Equal(t, 0, offerSdp.MediaDescriptions[1].MediaName.Port.Value)
+
+		_, ok := offerSdp.Attribute(sdp.AttrKeyGroup)
+		assert.False(t, ok)
+	})
+	t.Run("remote without bundle group, non-max-bundle keeps spec behavior", func(t *testing.T) {
+		se := SettingEngine{}
+
+		me := &MediaEngine{}
+		assert.NoError(t, me.RegisterDefaultCodecs())
+		api := NewAPI(WithMediaEngine(me))
+
+		tra := &RTPTransceiver{kind: RTPCodecTypeVideo, api: api, codecs: me.videoCodecs}
+		tra.setDirection(RTPTransceiverDirectionRecvonly)
+		trb := &RTPTransceiver{kind: RTPCodecTypeAudio, api: api, codecs: me.audioCodecs}
+		trb.setDirection(RTPTransceiverDirectionRecvonly)
+		mediaSections := []mediaSection{
+			{id: "video", transceivers: []*RTPTransceiver{tra}},
+			{id: "audio", transceivers: []*RTPTransceiver{trb}},
+		}
+
+		d := &sdp.SessionDescription{}
+
+		offerSdp, err := populateSDP(
+			d,
+			false,
+			[]DTLSFingerprint{},
+			se.sdpMediaLevelFingerprints,
+			se.candidates.ICELite,
+			true,
+			me,
+			connectionRoleFromDtlsRole(defaultDtlsRoleOffer),
+			[]ICECandidate{},
+			ICEParameters{},
+			mediaSections,
+			ICEGatheringStateComplete,
+			&remoteBundleGroup{},
+			BundlePolicyBalanced,
+			se.getSCTPMaxMessageSize(),
+			false,
+		)
+		assert.Nil(t, err)
+
+		// balanced and max-compat require separate transports for a non-bundle
+		// remote, which pion does not provide, so the keep-one-section fallback
+		// stays opt-in behind max-bundle and the spec behavior is unchanged.
+		assert.Equal(t, 0, offerSdp.MediaDescriptions[0].MediaName.Port.Value)
 		assert.Equal(t, 0, offerSdp.MediaDescriptions[1].MediaName.Port.Value)
 
 		_, ok := offerSdp.Attribute(sdp.AttrKeyGroup)
@@ -1307,6 +1366,7 @@ func TestPopulateSDP(t *testing.T) { //nolint:gocyclo,cyclop,maintidx
 			mediaSections,
 			ICEGatheringStateComplete,
 			nil,
+			BundlePolicyBalanced,
 			se.getSCTPMaxMessageSize(),
 			false,
 		)
